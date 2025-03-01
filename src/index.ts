@@ -1,1 +1,7 @@
-export { Client, ClientOptions, ClientSession, SearchResult } from "./client";
+export {
+  Client,
+  ClientOptions,
+  ClientSession,
+  ClientState,
+  SearchResult,
+} from "./client";

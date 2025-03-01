@@ -23,7 +23,7 @@ export class Client extends EventEmitter<ClientEvents> {
   private readonly userHash: string;
   protected readonly socket: Socket;
   private clientId: number = 0;
-  private session: ClientSession;
+  private session: Readonly<ClientSession>;
   protected pendingMessage?: IncomingMessage<ServerCommand>;
 
   constructor(options?: ClientOptions) {
@@ -40,10 +40,16 @@ export class Client extends EventEmitter<ClientEvents> {
     this.socket.addListener("error", (err) => this.onError(err));
     this.socket.addListener("close", () => this.onClose());
     this.socket.addListener("data", (data) => this.onReceive(data));
-    this.session = {};
+    this.session = {
+      state: ClientState.Disconnected,
+    };
   }
 
   protected onConnect() {
+    this.session = {
+      ...this.session,
+      state: ClientState.Connected,
+    };
     this.emit("connected", this.session);
   }
 
@@ -52,7 +58,9 @@ export class Client extends EventEmitter<ClientEvents> {
   }
 
   protected onClose() {
-    this.session = {};
+    this.session = {
+      state: ClientState.Disconnected,
+    };
     this.emit("disconnected");
   }
 
@@ -103,27 +111,39 @@ export class Client extends EventEmitter<ClientEvents> {
         {
           const body = new ServerIDChangeMessageBody(data);
           this.clientId = body.newId;
-          this.session.clientId = body.newId;
-          this.session.flags = body.flags;
+          this.session = {
+            ...this.session,
+            state: ClientState.LoggedIn,
+            clientId: body.newId,
+            flags: body.flags,
+          };
           this.emit("idchange", this.session);
         }
         break;
       case ServerCommand.ServerStatus:
         {
           const body = new ServerStatusMessageBody(data);
-          this.session.users = body.users;
-          this.session.files = body.files;
+          this.session = {
+            ...this.session,
+            users: body.users,
+            files: body.files,
+          };
           this.emit("serverstatus", this.session);
         }
         break;
       case ServerCommand.SearchResult:
         {
           const body = new ServerSearchResultMessageBody(data);
-          this.session.results = {
+          const results = {
             ...this.session.results,
             [this.session.lastQuery || "Files"]: body.results.map((e) =>
               this.transformResult(e)
             ),
+          };
+          this.session = {
+            ...this.session,
+            state: ClientState.LoggedIn,
+            results,
           };
           this.emit("searchresult", this.session);
         }
@@ -134,10 +154,10 @@ export class Client extends EventEmitter<ClientEvents> {
   }
 
   protected pushMessage(message: string) {
-    if (!this.session.messages) {
-      this.session.messages = [];
-    }
-    this.session.messages = [...this.session.messages, message];
+    this.session = {
+      ...this.session,
+      messages: [...(this.session.messages || []), message],
+    };
   }
 
   protected transformResult(res: SearchResultEntry): SearchResult {
@@ -155,7 +175,11 @@ export class Client extends EventEmitter<ClientEvents> {
   }
 
   connect(host: string, port: number) {
+    if (this.session.state > ClientState.Disconnected) {
+      throw new Error("client is connecting or already connected");
+    }
     this.session = {
+      state: ClientState.Connecting,
       host,
       port,
     };
@@ -163,6 +187,16 @@ export class Client extends EventEmitter<ClientEvents> {
   }
 
   login() {
+    if (this.session.state < ClientState.Connected) {
+      throw new Error("client is not connected");
+    }
+    if (this.session.state >= ClientState.LoggingIn) {
+      throw new Error("client is logging in or already logged in");
+    }
+    this.session = {
+      ...this.session,
+      state: ClientState.LoggingIn,
+    };
     const msg = new ClientLoginRequest({
       userHash: this.userHash,
       clientId: this.clientId,
@@ -178,10 +212,20 @@ export class Client extends EventEmitter<ClientEvents> {
   }
 
   search(query: string) {
+    if (this.session.state < ClientState.LoggedIn) {
+      throw new Error("client is not logged in");
+    }
+    if (this.session.state === ClientState.Searching) {
+      throw new Error("client is searching");
+    }
     const msg = new ClientSearchRequest(query);
     const buffer = msg.getBuffer();
     this.socket.write(buffer);
-    this.session.lastQuery = query;
+    this.session = {
+      ...this.session,
+      state: ClientState.Searching,
+      lastQuery: query,
+    };
   }
 
   getSession() {
@@ -202,6 +246,7 @@ export interface ClientEvents {
 }
 
 export interface ClientSession {
+  state: ClientState;
   host?: string;
   port?: number;
   clientId?: number;
@@ -211,6 +256,15 @@ export interface ClientSession {
   lastQuery?: string;
   results?: Record<string, SearchResult[]>;
   messages?: string[];
+}
+
+export const enum ClientState {
+  Disconnected,
+  Connecting,
+  Connected,
+  LoggingIn,
+  LoggedIn,
+  Searching,
 }
 
 export interface ClientOptions {
