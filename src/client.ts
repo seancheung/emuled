@@ -180,8 +180,7 @@ export class Client extends EventEmitter<ClientEvents> {
     }
     this.session = {
       state: ClientState.Connecting,
-      host,
-      port,
+      server: { host, port },
     };
     this.socket.connect(port, host, () => this.onConnect());
   }
@@ -247,8 +246,7 @@ export interface ClientEvents {
 
 export interface ClientSession {
   state: ClientState;
-  host?: string;
-  port?: number;
+  server?: { host: string; port: number };
   clientId?: number;
   flags?: number;
   users?: number;
