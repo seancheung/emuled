@@ -24,7 +24,7 @@ export class Query {
   private _write(writer: BufferWriter, value: QueryOperator | string) {
     if (typeof value === "string") {
       writer.writeUInt8(ParamType.String);
-      writer.writeUInt32String(value);
+      writer.writeUInt16String(value);
     } else {
       writer.writeUInt8(ParamType.Boolean);
       writer.writeUInt8(value.type);

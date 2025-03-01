@@ -113,7 +113,7 @@ export class Client extends EventEmitter<ClientEvents> {
           this.clientId = body.newId;
           this.session = {
             ...this.session,
-            state: ClientState.LoggedIn,
+            state: ClientState.Idle,
             clientId: body.newId,
             flags: body.flags,
           };
@@ -142,7 +142,7 @@ export class Client extends EventEmitter<ClientEvents> {
           };
           this.session = {
             ...this.session,
-            state: ClientState.LoggedIn,
+            state: ClientState.Idle,
             results,
           };
           this.emit("searchresult", this.session);
@@ -207,11 +207,18 @@ export class Client extends EventEmitter<ClientEvents> {
   }
 
   disconnect() {
+    if (this.session.state < ClientState.Connected) {
+      throw new Error("client is not connected");
+    }
+    this.session = {
+      ...this.session,
+      state: ClientState.Disconnecting,
+    };
     this.socket.end();
   }
 
   search(query: string) {
-    if (this.session.state < ClientState.LoggedIn) {
+    if (this.session.state < ClientState.Idle) {
       throw new Error("client is not logged in");
     }
     if (this.session.state === ClientState.Searching) {
@@ -257,11 +264,12 @@ export interface ClientSession {
 }
 
 export const enum ClientState {
-  Disconnected,
+  Disconnecting = -1,
+  Disconnected = 0,
   Connecting,
   Connected,
   LoggingIn,
-  LoggedIn,
+  Idle,
   Searching,
 }
 
