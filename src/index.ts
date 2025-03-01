@@ -1,1 +1,1 @@
-export { Client, ClientOptions, ClientSession } from "./client";
+export { Client, ClientOptions, ClientSession, SearchResult } from "./client";

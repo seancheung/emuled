@@ -14,6 +14,13 @@ export const enum TagName {
   EmuleVersion = 0xfb,
 }
 
+export const enum FileTag {
+  FileName = 0x01,
+  FileSize = 0x02,
+  FileSources = 0x15,
+  FileCompleteSources = 0x30,
+}
+
 export interface TagData {
   readonly type: TagType;
   readonly name: number | string;

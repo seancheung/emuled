@@ -15,6 +15,7 @@ import {
   ServerSearchResultMessageBody,
   ServerStatusMessageBody,
 } from "./message/server-to-client";
+import { FileTag } from "./message/tag";
 
 export class Client extends EventEmitter<ClientEvents> {
   private readonly nickName: string;
@@ -36,26 +37,26 @@ export class Client extends EventEmitter<ClientEvents> {
     this.clientPort = clientPort;
     this.userHash = uuid.replace(/-/g, "");
     this.socket = new Socket();
-    this.socket.addListener("error", this.onError);
-    this.socket.addListener("close", this.onClose);
-    this.socket.addListener("data", this.onReceive);
+    this.socket.addListener("error", (err) => this.onError(err));
+    this.socket.addListener("close", () => this.onClose());
+    this.socket.addListener("data", (data) => this.onReceive(data));
     this.session = {};
   }
 
-  protected onConnect = () => {
+  protected onConnect() {
     this.emit("connected", this.session);
-  };
+  }
 
-  protected onError = (err: Error) => {
+  protected onError(err: Error) {
     this.emit("error", err);
-  };
+  }
 
-  protected onClose = () => {
+  protected onClose() {
     this.session = {};
     this.emit("disconnected");
-  };
+  }
 
-  protected onReceive = (data: Buffer) => {
+  protected onReceive(data: Buffer) {
     const protocol = data.readUInt8();
     switch (protocol) {
       case MessageProtocol.EMule:
@@ -66,7 +67,7 @@ export class Client extends EventEmitter<ClientEvents> {
           if (!message.isComplete) {
             this.pendingMessage = message;
           } else {
-            this.dispatchMessage(message).catch(this.onError);
+            this.dispatchMessage(message).catch((err) => this.onError(err));
           }
         }
         break;
@@ -80,12 +81,12 @@ export class Client extends EventEmitter<ClientEvents> {
           if (this.pendingMessage.isComplete) {
             const message = this.pendingMessage;
             this.pendingMessage = undefined;
-            this.dispatchMessage(message).catch(this.onError);
+            this.dispatchMessage(message).catch((err) => this.onError(err));
           }
         }
         break;
     }
-  };
+  }
 
   protected async dispatchMessage(message: IncomingMessage<ServerCommand>) {
     const header = message.header;
@@ -120,7 +121,9 @@ export class Client extends EventEmitter<ClientEvents> {
           const body = new ServerSearchResultMessageBody(data);
           this.session.results = {
             ...this.session.results,
-            [this.session.lastQuery || "Files"]: body.results,
+            [this.session.lastQuery || "Files"]: body.results.map((e) =>
+              this.transformResult(e)
+            ),
           };
           this.emit("searchresult", this.session);
         }
@@ -130,7 +133,36 @@ export class Client extends EventEmitter<ClientEvents> {
     }
   }
 
-  protected login() {
+  protected pushMessage(message: string) {
+    if (!this.session.messages) {
+      this.session.messages = [];
+    }
+    this.session.messages = [...this.session.messages, message];
+  }
+
+  protected transformResult(res: SearchResultEntry): SearchResult {
+    const tags = res.tags.reduce((acc, tag) => {
+      acc[tag.name] = tag.value;
+      return acc;
+    }, {} as Record<string, string | number>);
+    return {
+      hash: res.hash,
+      name: tags[FileTag.FileName] as string,
+      size: tags[FileTag.FileSize] as number,
+      sources: tags[FileTag.FileSources] as number,
+      completeSources: tags[FileTag.FileCompleteSources] as number,
+    };
+  }
+
+  connect(host: string, port: number) {
+    this.session = {
+      host,
+      port,
+    };
+    this.socket.connect(port, host, () => this.onConnect());
+  }
+
+  login() {
     const msg = new ClientLoginRequest({
       userHash: this.userHash,
       clientId: this.clientId,
@@ -139,21 +171,6 @@ export class Client extends EventEmitter<ClientEvents> {
     });
     const buffer = msg.getBuffer();
     this.socket.write(buffer);
-  }
-
-  protected pushMessage(message: string) {
-    if (!this.session.messages) {
-      this.session.messages = [];
-    }
-    this.session.messages = [...this.session.messages, message];
-  }
-
-  connect(host: string, port: number) {
-    this.session = {
-      host,
-      port,
-    };
-    this.socket.connect(port, host, this.onConnect);
   }
 
   disconnect() {
@@ -192,7 +209,7 @@ export interface ClientSession {
   users?: number;
   files?: number;
   lastQuery?: string;
-  results?: Record<string, SearchResultEntry[]>;
+  results?: Record<string, SearchResult[]>;
   messages?: string[];
 }
 
@@ -200,4 +217,12 @@ export interface ClientOptions {
   uuid?: string;
   nickName?: string;
   clientPort?: number;
+}
+
+export interface SearchResult {
+  hash: string;
+  name?: string;
+  size?: number;
+  sources?: number;
+  completeSources?: number;
 }
