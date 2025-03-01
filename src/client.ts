@@ -50,10 +50,16 @@ export class Client extends EventEmitter<ClientEvents> {
       ...this.session,
       state: ClientState.Connected,
     };
+    this.pushLog(
+      `[INFO] connected to ${this.session.server?.host || "unknown"}:${
+        this.session.server?.port || "0000"
+      }`
+    );
     this.emit("connected", this.session);
   }
 
   protected onError(err: Error) {
+    this.pushLog(`[ERROR] ${err.message}`);
     this.emit("error", err);
   }
 
@@ -61,11 +67,13 @@ export class Client extends EventEmitter<ClientEvents> {
     this.session = {
       state: ClientState.Disconnected,
     };
+    this.pushLog("[INFO] disconnected");
     this.emit("disconnected");
   }
 
   protected onReceive(data: Buffer) {
     const protocol = data.readUInt8();
+    this.pushLog(`[VERBORSE] received ${data.length} bytes`);
     switch (protocol) {
       case MessageProtocol.EMule:
       case MessageProtocol.EDonkey:
@@ -104,6 +112,7 @@ export class Client extends EventEmitter<ClientEvents> {
         {
           const body = new ServerGeneralMessageBody(data);
           this.pushMessage(body.message);
+          this.pushLog(`[SERVER] ${body.message}`);
           this.emit("servermessage", this.session);
         }
         break;
@@ -117,6 +126,7 @@ export class Client extends EventEmitter<ClientEvents> {
             clientId: body.newId,
             flags: body.flags,
           };
+          this.pushLog(`[INFO] new client id is ${body.newId}`);
           this.emit("idchange", this.session);
         }
         break;
@@ -128,6 +138,9 @@ export class Client extends EventEmitter<ClientEvents> {
             users: body.users,
             files: body.files,
           };
+          this.pushLog(
+            `[INFO] server has ${body.users} users and ${body.files} files`
+          );
           this.emit("serverstatus", this.session);
         }
         break;
@@ -145,6 +158,7 @@ export class Client extends EventEmitter<ClientEvents> {
             state: ClientState.Idle,
             results,
           };
+          this.pushLog(`[VERBOSE] found ${body.results.length} search results`);
           this.emit("searchresult", this.session);
         }
         break;
@@ -157,6 +171,13 @@ export class Client extends EventEmitter<ClientEvents> {
     this.session = {
       ...this.session,
       messages: [...(this.session.messages || []), message],
+    };
+  }
+
+  protected pushLog(log: string) {
+    this.session = {
+      ...this.session,
+      logs: [...(this.session.logs || []), log],
     };
   }
 
@@ -183,6 +204,7 @@ export class Client extends EventEmitter<ClientEvents> {
       server: { host, port },
     };
     this.socket.connect(port, host, () => this.onConnect());
+    this.pushLog("[VERBOSE] begin connect");
   }
 
   login() {
@@ -204,6 +226,7 @@ export class Client extends EventEmitter<ClientEvents> {
     });
     const buffer = msg.getBuffer();
     this.socket.write(buffer);
+    this.pushLog("[VERBOSE] begin login");
   }
 
   disconnect() {
@@ -215,6 +238,7 @@ export class Client extends EventEmitter<ClientEvents> {
       state: ClientState.Disconnecting,
     };
     this.socket.end();
+    this.pushLog("[VERBOSE] begin disconnect");
   }
 
   search(query: string) {
@@ -232,6 +256,7 @@ export class Client extends EventEmitter<ClientEvents> {
       state: ClientState.Searching,
       lastQuery: query,
     };
+    this.pushLog("[VERBOSE] begin search");
   }
 
   getSession() {
@@ -261,6 +286,7 @@ export interface ClientSession {
   lastQuery?: string;
   results?: Record<string, SearchResult[]>;
   messages?: string[];
+  logs?: string[];
 }
 
 export const enum ClientState {
