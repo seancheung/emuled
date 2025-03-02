@@ -1,6 +1,6 @@
 {
   "name": "emuled",
-  "version": "0.3.3",
+  "version": "0.3.5",
   "description": "eMule(eDonkey) Client for Node.js",
   "keywords": [
     "emule",

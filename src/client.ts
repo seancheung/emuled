@@ -21,6 +21,7 @@ export class Client extends EventEmitter<ClientEvents> {
   private readonly nickName: string;
   private readonly clientPort: number;
   private readonly userHash: string;
+  private readonly maxLogCount: number;
   protected readonly socket: Socket;
   private clientId: number = 0;
   private session: Readonly<ClientSession>;
@@ -32,10 +33,12 @@ export class Client extends EventEmitter<ClientEvents> {
       nickName = "https://www.emule-project.org",
       clientPort = 15490,
       uuid = randomUUID(),
+      maxLogCount = 100,
     } = options || {};
     this.nickName = nickName;
     this.clientPort = clientPort;
     this.userHash = uuid.replace(/-/g, "");
+    this.maxLogCount = maxLogCount;
     this.socket = new Socket();
     this.socket.addListener("error", (err) => this.onError(err));
     this.socket.addListener("close", () => this.onClose());
@@ -66,6 +69,7 @@ export class Client extends EventEmitter<ClientEvents> {
   protected onClose() {
     this.session = {
       state: ClientState.Disconnected,
+      logs: this.session.logs,
     };
     this.pushLog("[INFO] disconnected");
     this.emit("disconnected");
@@ -167,17 +171,19 @@ export class Client extends EventEmitter<ClientEvents> {
     }
   }
 
-  protected pushMessage(message: string) {
+  protected pushMessage(text: string) {
     this.session = {
       ...this.session,
-      messages: [...(this.session.messages || []), message],
+      messages: [...(this.session.messages || []), { text, time: Date.now() }],
     };
   }
 
-  protected pushLog(log: string) {
+  protected pushLog(text: string) {
     this.session = {
       ...this.session,
-      logs: [...(this.session.logs || []), log],
+      logs: [...(this.session.logs || []), { text, time: Date.now() }].slice(
+        1 - this.maxLogCount
+      ),
     };
   }
 
@@ -202,6 +208,7 @@ export class Client extends EventEmitter<ClientEvents> {
     this.session = {
       state: ClientState.Connecting,
       server: { host, port },
+      logs: this.session.logs,
     };
     this.socket.connect(port, host, () => this.onConnect());
     this.pushLog("[VERBOSE] begin connect");
@@ -285,8 +292,8 @@ export interface ClientSession {
   files?: number;
   lastQuery?: string;
   results?: Record<string, SearchResult[]>;
-  messages?: string[];
-  logs?: string[];
+  messages?: { text: string; time: number }[];
+  logs?: { text: string; time: number }[];
 }
 
 export const enum ClientState {
@@ -303,6 +310,7 @@ export interface ClientOptions {
   uuid?: string;
   nickName?: string;
   clientPort?: number;
+  maxLogCount?: number;
 }
 
 export interface SearchResult {
