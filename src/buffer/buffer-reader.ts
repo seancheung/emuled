@@ -22,6 +22,12 @@ export class BufferReader<
     return value;
   }
 
+  readUInt64() {
+    const value = this.buffer.readBigInt64LE(this.offset);
+    this.offset += 8;
+    return value;
+  }
+
   readString(len: number, encoding: BufferEncoding = "utf-8") {
     const value = this.buffer.toString(
       encoding,

@@ -191,18 +191,18 @@ export class Client extends EventEmitter<ClientEvents> {
     const tags = res.tags.reduce((acc, tag) => {
       acc[tag.name] = tag.value;
       return acc;
-    }, {} as Record<string, string | number>);
+    }, {} as Record<string, string | number | bigint>);
     return {
       hash: res.hash,
       name: tags[FileTag.FileName] as string,
-      size: tags[FileTag.FileSize] as number,
+      size: tags[FileTag.FileSize] as bigint,
       sources: tags[FileTag.FileSources] as number,
       completeSources: tags[FileTag.FileCompleteSources] as number,
     };
   }
 
   connect(host: string, port: number) {
-    if (this.session.state > ClientState.Disconnected) {
+    if (this.session.state !== ClientState.Disconnected) {
       throw new Error("client is connecting or already connected");
     }
     this.session = {
@@ -316,7 +316,7 @@ export interface ClientOptions {
 export interface SearchResult {
   hash: string;
   name?: string;
-  size?: number;
+  size?: bigint;
   sources?: number;
   completeSources?: number;
 }

@@ -24,7 +24,7 @@ export const enum FileTag {
 export interface TagData {
   readonly type: TagType;
   readonly name: number | string;
-  readonly value: number | string;
+  readonly value: number | string | bigint;
 }
 
 export interface StringTag extends TagData {
@@ -36,7 +36,7 @@ export interface StringTag extends TagData {
 export interface NumberTag extends TagData {
   readonly type: TagType.UInt32;
   readonly name: number | string;
-  readonly value: number;
+  readonly value: number | bigint;
 }
 
 export class Tag implements TagData {
@@ -96,7 +96,7 @@ export class Tag implements TagData {
       }
     }
 
-    let value: number | string | undefined;
+    let value: number | bigint | string | undefined;
     switch (type) {
       case TagType.String:
         value = reader.readUInt16String();
@@ -105,7 +105,7 @@ export class Tag implements TagData {
         value = reader.readUInt32();
         break;
       case 0x0b: // UInt64
-        reader.seek(8);
+        value = reader.readUInt64();
         break;
       case 0x08: // UInt16
         value = reader.readUInt16();
