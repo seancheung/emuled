@@ -197,7 +197,7 @@ export class Client extends EventEmitter<ClientEvents> {
       name: tags[FileTag.FileName] as string,
       size: tags[FileTag.FileSize] as bigint,
       sources: tags[FileTag.FileSources] as number,
-      completeSources: tags[FileTag.FileCompleteSources] as number,
+      complete: tags[FileTag.FileCompleteSources] as number,
     };
   }
 
@@ -318,5 +318,5 @@ export interface SearchResult {
   name?: string;
   size?: bigint;
   sources?: number;
-  completeSources?: number;
+  complete?: number;
 }
