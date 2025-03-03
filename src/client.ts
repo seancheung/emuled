@@ -23,8 +23,10 @@ export class Client extends EventEmitter<ClientEvents> {
   private readonly userHash: string;
   private readonly maxLogCount: number;
   protected readonly socket: Socket;
+  private readonly timeout: number;
   private clientId: number = 0;
   private session: Readonly<ClientSession>;
+  private timer?: NodeJS.Timeout;
   protected pendingMessage?: IncomingMessage<ServerCommand>;
 
   constructor(options?: ClientOptions) {
@@ -34,11 +36,13 @@ export class Client extends EventEmitter<ClientEvents> {
       clientPort = 15490,
       uuid = randomUUID(),
       maxLogCount = 100,
+      timeout = 60,
     } = options || {};
     this.nickName = nickName;
     this.clientPort = clientPort;
     this.userHash = uuid.replace(/-/g, "");
     this.maxLogCount = maxLogCount;
+    this.timeout = timeout;
     this.socket = new Socket();
     this.socket.addListener("error", (err) => this.onError(err));
     this.socket.addListener("close", () => this.onClose());
@@ -71,6 +75,10 @@ export class Client extends EventEmitter<ClientEvents> {
       state: ClientState.Disconnected,
       logs: this.session.logs,
     };
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+    }
     this.pushLog("[INFO] disconnected");
     this.emit("disconnected");
   }
@@ -150,6 +158,10 @@ export class Client extends EventEmitter<ClientEvents> {
         break;
       case ServerCommand.SearchResult:
         {
+          if (this.timer) {
+            clearTimeout(this.timer);
+            this.timer = undefined;
+          }
           const body = new ServerSearchResultMessageBody(data);
           const results = {
             ...this.session.results,
@@ -167,6 +179,7 @@ export class Client extends EventEmitter<ClientEvents> {
         }
         break;
       default:
+        this.pushLog(`[WARN] unknown command ${header.command}`);
         return;
     }
   }
@@ -252,7 +265,7 @@ export class Client extends EventEmitter<ClientEvents> {
     if (this.session.state < ClientState.Idle) {
       throw new Error("client is not logged in");
     }
-    if (this.session.state === ClientState.Searching) {
+    if (this.session.state === ClientState.Searching && this.timeout) {
       throw new Error("client is searching");
     }
     const msg = new ClientSearchRequest(query);
@@ -263,7 +276,25 @@ export class Client extends EventEmitter<ClientEvents> {
       state: ClientState.Searching,
       lastQuery: query,
     };
+    this.timer = setTimeout(() => {
+      if (this.session.state === ClientState.Searching) {
+        this.session = {
+          ...this.session,
+          state: ClientState.Idle,
+        };
+        this.pendingMessage = undefined;
+        this.timer = undefined;
+        this.pushLog("[WARN] search timeout");
+      }
+    }, this.timeout * 1000);
     this.pushLog("[VERBOSE] begin search");
+  }
+
+  clearLogs() {
+    this.session = {
+      ...this.session,
+      logs: [],
+    };
   }
 
   getSession() {
@@ -311,6 +342,7 @@ export interface ClientOptions {
   nickName?: string;
   clientPort?: number;
   maxLogCount?: number;
+  timeout?: number;
 }
 
 export interface SearchResult {
